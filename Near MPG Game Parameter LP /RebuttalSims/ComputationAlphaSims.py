@@ -111,25 +111,25 @@ def find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lam
             den, phi[s][a] = game.get_public_rewards(s, a)
 
     def gamma_(n):
-        return  1/(5* n) 
+        return  1/(n) 
 
     def delta_(n):
-        return (n)**0.45 
+        return 10*n**0.45
 
 
 
-    T = 100000
-    X = 1
+    T = 10000
+    X = 6
     X_list = [X]
     for n in range(T+1):
         pi = generate_random_pi(I, S, A)
         pi_prime = generate_random_pi(I, S, A)
         g_val = g(pi, pi_prime, X, I, phi, R, P, S, list_S, A, delta, mu)
-        X_new = X - gamma_(n+1) * (1 - delta_(n+1) * (abs(g_val) > X) * (abs(g_val) - X))
+        X_new = max(X - gamma_(n+1) * (1 - delta_(n+1) * (g_val > 0) * (g_val - 0)),0)
 
         X_list.append(X_new)
         X = X_new
-        if n%100 == 0:
+        if n%1 == 0:
             print(n, X)
 
     return X_list
@@ -144,11 +144,11 @@ lambda_3 = 0.8
 lambda_4 = 0.2
 
 
-delta = 0.99
+delta = 0.9
 
-epsilon = 0.1
+epsilon = 1
 
-alpha_r = 0.4
+alpha_r = 0.1
 beta_r = 0.8
 
 X_list = find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lambda_4, delta, alpha_r, beta_r, epsilon)
