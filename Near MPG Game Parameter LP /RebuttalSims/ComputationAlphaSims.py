@@ -121,6 +121,8 @@ def find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lam
     T = 10000
     X = 6
     X_list = [X]
+    X_avg = 0 
+    num_avg = 0
     for n in range(T+1):
         pi = generate_random_pi(I, S, A)
         pi_prime = generate_random_pi(I, S, A)
@@ -129,13 +131,17 @@ def find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lam
 
         X_list.append(X_new)
         X = X_new
-        if n%1 == 0:
+        if n%10 == 0:
             print(n, X)
+            
+        if n>= 0.9*T:
+            X_avg+= X_new 
+            num_avg += 1
 
-    return X_list
+    return X_list, X_avg/num_avg
 
 
-N = 3
+N = 9
 
 lambda_1 = 0.8
 lambda_2 = 0.2
@@ -146,14 +152,16 @@ lambda_4 = 0.2
 
 delta = 0.9
 
-epsilon = 1
+epsilon = 0.5
 
 alpha_r = 0.1
 beta_r = 0.8
 
-X_list = find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lambda_4, delta, alpha_r, beta_r, epsilon)
+X_list, avg = find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lambda_4, delta, alpha_r, beta_r, epsilon)
 plt.plot(X_list)
+plt.yscale("log")
 plt.xlabel(r"$t$")
 plt.ylabel(r"$y_t$")
 plt.title("Perturbed Team Game: agents = %s"%str(N))
 plt.show()
+print(avg)

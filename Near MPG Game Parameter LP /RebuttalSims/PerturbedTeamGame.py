@@ -40,11 +40,10 @@ class perturbed_game:
         
         self.epsilon = epsilon
         
-        transition_kernel = self.strategy_dependent_transition_kernel
-        self.P = ProbabilityTransitionKernel(self.S, self.A, transition_kernel)
+        self.P = ProbabilityTransitionKernel(self.S, self.A, self.strategy_dependent_transition_kernel)
 
 
-        self.mu = InitialStateDistribution(self.S, lambda s: 1 / len(self.S))
+        self.mu = InitialStateDistribution(self.S, lambda s: 1 if s.value == self.LOW_EXCITEMENT else 0)
         self.R = RewardFunction(self.I, self.S, self.A, self.reward)
         self.game = StochasticGame(self.I, self.S, self.A, self.mu, self.P, self.R, delta)
         
@@ -55,7 +54,7 @@ class perturbed_game:
     	"""
     	Free feel to modify this part
         """
-    	xi = (actions[i].value == state) * ((N+1 -int(str(i)))/N)  * 5 - actions[i].value * ((int(str(i))+1)/N)
+    	xi = (actions[i].value == state.value) * ((N+1 -int(str(i)))/N)  * 5 - actions[i].value * ((int(str(i))+1)/N)
     	return xi * self.epsilon
 
     
@@ -80,30 +79,29 @@ class perturbed_game:
     
     def strategy_dependent_transition_kernel(self, s, actions, s_prime):
         pr = 1.0
-        
         num_approver = int(sum(indicator(actions[j].value == self.APPROVE) for j in self.I))
                 
-        if s == self.HIGH_EXCITEMENT: 
-            if s_prime == self.HIGH_EXCITEMENT and num_approver >= self.N/4:
+        if s.value == self.HIGH_EXCITEMENT: 
+            if s_prime.value == self.HIGH_EXCITEMENT and num_approver >= self.N/4:
                 pr *= self.lambda_1 
-            if s_prime == self.LOW_EXCITEMENT and num_approver >= self.N/4:
+            if s_prime.value == self.LOW_EXCITEMENT and num_approver >= self.N/4:
                 pr *= 1-self.lambda_1 
              
-            if s_prime == self.HIGH_EXCITEMENT and num_approver < self.N/4:
+            if s_prime.value == self.HIGH_EXCITEMENT and num_approver < self.N/4:
                 pr *= self.lambda_2
-            if s_prime == self.LOW_EXCITEMENT and num_approver < self.N/4:
+            if s_prime.value == self.LOW_EXCITEMENT and num_approver < self.N/4:
                 pr *= 1-self.lambda_2
                 
                 
-        if s == self.LOW_EXCITEMENT: 
-            if s_prime == self.HIGH_EXCITEMENT and num_approver >= self.N/2:
+        if s.value == self.LOW_EXCITEMENT: 
+            if s_prime.value == self.HIGH_EXCITEMENT and num_approver >= self.N/2:
                 pr *= self.lambda_3 
-            if s_prime == self.LOW_EXCITEMENT and num_approver >= self.N/2:
+            if s_prime.value == self.LOW_EXCITEMENT and num_approver >= self.N/2:
                 pr *= 1-self.lambda_3 
              
-            if s_prime == self.HIGH_EXCITEMENT and num_approver < self.N/2:
+            if s_prime.value == self.HIGH_EXCITEMENT and num_approver < self.N/2:
                 pr *= self.lambda_4
-            if s_prime == self.LOW_EXCITEMENT and num_approver < self.N/2:
+            if s_prime.value == self.LOW_EXCITEMENT and num_approver < self.N/2:
                 pr *= 1-self.lambda_4
             
         return pr

@@ -44,18 +44,10 @@ def construct_d_pi(
         i: Player, pi_i: Policy, pi_minus_i: JointPolicy, P: ProbabilityTransitionKernel,
         S_list: typing.List[State], A: ActionProfileSet, delta: float, init_dist: InitialStateDistribution
 ):
-    # d_pi = np.zeros(shape=(len(S_list)))
-    # for j1 in range(len(S_list)):
-    #     for j2 in range(len(S_list)):
-    #         P_pi[j1, j2] = sum(
-    #             P[(S_list[j1], a, S_list[j2])]
-    #             * pi_i[(S_list[j1], a[i])]
-    #             * pi_minus_i.prob(S_list[j1], a.minus(i))
-    #             for a in A
-    #         )
+
     identity = np.eye(len(S_list))
     
-    mat = (1/(1-delta))*identity - delta*construct_P_pi(i, pi_i, pi_minus_i, P, S_list, A)
+    mat = identity - delta*construct_P_pi(i, pi_i, pi_minus_i, P, S_list, A)
     
     mat_inv = np.linalg.inv(mat) 
     
@@ -64,8 +56,10 @@ def construct_d_pi(
     for idx, s in enumerate(S_list):
         initialdist[idx] = init_dist[S_list[idx]]
     
-    d_pi = np.matmul(mat_inv,initialdist)
+    d_pi = (1-delta)*np.matmul(mat_inv,initialdist)
     
+    # for j in range(len(d_pi)):
+    #     print(d_pi[j])
     A_list = list(A)
     
     d_pi_s_a = np.zeros(shape = (len(S_list), len(A_list)))
