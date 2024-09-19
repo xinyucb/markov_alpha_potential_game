@@ -131,7 +131,7 @@ def find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lam
 
         X_list.append(X_new)
         X = X_new
-        if n%10 == 0:
+        if n%100 == 0:
             print(n, X)
             
         if n>= 0.9*T:
@@ -141,7 +141,7 @@ def find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lam
     return X_list, X_avg/num_avg
 
 
-N = 9
+N = 3
 
 lambda_1 = 0.8
 lambda_2 = 0.2
@@ -159,7 +159,6 @@ beta_r = 0.8
 
 X_list, avg = find_best_potential_function_randomized(N, lambda_1, lambda_2, lambda_3, lambda_4, delta, alpha_r, beta_r, epsilon)
 plt.plot(X_list)
-plt.yscale("log")
 plt.xlabel(r"$t$")
 plt.ylabel(r"$y_t$")
 plt.title("Perturbed Team Game: agents = %s"%str(N))

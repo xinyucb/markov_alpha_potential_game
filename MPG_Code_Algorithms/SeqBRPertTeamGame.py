@@ -310,9 +310,161 @@ def full_experiment(game, runs,iters,eta,T,samples, kappa,tau):
     plt.show()
 
     return fig1, fig2, fig3
+
+def compute_best_response(game, agent, policies, gamma=0.99, epsilon=1e-6, max_iters=1000):
+    """
+    Computes the best response for a given agent assuming the other agents' policies are fixed.
+
+    :param game: Game environment
+    :param agent: Index of the agent for whom we are computing the best response
+    :param policies: Fixed policies for all other agents
+    :param gamma: Discount factor
+    :param epsilon: Convergence threshold for value iteration
+    :param max_iters: Maximum number of iterations for value iteration
+    :return: Optimal Q-values and the corresponding best response policy for the agent
+    """
+    S = game.S  # Number of states
+    A = game.num_actions[agent]  # Number of actions for this agent
     
+    # Initialize value function and Q-function
+    V = np.zeros(S)
+    Q = np.zeros((S, A))
+    
+    for iteration in range(max_iters):
+        delta = 0
+        for s in range(S):
+            # Backup for each action (assuming other agents' policies are fixed)
+            for a in range(A):
+                expected_value = 0
+                for s_prime in range(S):
+                    actions_others = [np.argmax(policies[s_prime, i]) for i in range(game.n) if i != agent]
+                    actions_full = actions_others[:agent] + [a] + actions_others[agent:]
+                    reward = game.get_rewards(s, actions_full)[agent]
+                    next_state = game.sample_next_state(s, actions_full)
+                    expected_value += reward + gamma * V[next_state]
+                
+                Q[s, a] = expected_value  # Update Q-value
+                
+            best_action_value = np.max(Q[s])
+            delta = max(delta, np.abs(best_action_value - V[s]))
+            V[s] = best_action_value  # Update value function
+        
+        if delta < epsilon:  # Convergence check
+            break
+
+    # Best response policy: always choose action that maximizes Q(s, a)
+    best_response_policy = np.zeros((S, A))
+    for s in range(S):
+        best_action = np.argmax(Q[s])
+        best_response_policy[s, best_action] = 1.0  # Deterministic best response
+    
+    return Q, best_response_policy
+
+def compute_expected_value(game, policy, gamma=0.99, agent=0, epsilon=1e-6, max_iters=1000):
+    """
+    Computes the expected discounted value for a given agent under a specific policy.
+
+    :param game: Game environment
+    :param policy: Policy for the agent (or joint policy in multi-agent setting)
+    :param gamma: Discount factor
+    :param agent: Index of the agent
+    :param epsilon: Convergence threshold for value iteration
+    :param max_iters: Maximum number of iterations
+    :return: The expected discounted value for the agent
+    """
+    S = game.S  # Number of states
+    V = np.zeros(S)  # Initialize value function
+
+    for iteration in range(max_iters):
+        delta = 0
+        for s in range(S):
+            expected_value = 0
+            for a in range(game.num_actions[agent]):
+                action_prob = policy[s, a]
+                for s_prime in range(S):
+                    actions_others = [np.argmax(policy[s_prime, i]) for i in range(game.n) if i != agent]
+                    actions_full = actions_others[:agent] + [a] + actions_others[agent:]
+                    reward = game.get_rewards(s, actions_full)[agent]
+                    next_state = game.sample_next_state(s, actions_full)
+                    expected_value += action_prob * (reward + gamma * V[next_state])
+
+            delta = max(delta, np.abs(expected_value - V[s]))
+            V[s] = expected_value  # Update the value function
+
+        if delta < epsilon:  # Convergence check
+            break
+
+    return np.mean(V)  # Return the average value across all states
+
+def compute_nash_regret(game, policies, gamma=0.99):
+    """
+    Computes Nash regret for the given policies.
+
+    :param game: Game environment
+    :param policies: List of policies for all agents
+    :param gamma: Discount factor
+    :return: Total Nash regret value
+    """
+    total_regret = 0.0
+    for agent in range(game.n):
+        # Compute the best response for this agent assuming fixed policies for others
+        Q_opt, best_response_policy = compute_best_response(game, agent, policies, gamma)
+        
+        # Compute expected value of current policy and best response policy
+        current_value = compute_expected_value(game, policies[agent], gamma, agent)
+        best_response_value = compute_expected_value(game, best_response_policy, gamma, agent)
+        
+        # Regret is the difference between best response and current policy value
+        regret = best_response_value - current_value
+        total_regret += regret
+    
+    return total_regret
+
+
+# Example usage in the experiment setup
+# Example usage in the experiment setup
+def full_experiment_with_regret(game, runs, iters, eta, T, samples, kappa, tau):
+    S, N, all_states, M = game.S, game.n, game.all_states, game.num_actions
+    path = "team_model_results/kappa_" + str(kappa) + "/"
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    raw_accuracies = []
+    raw_regrets = []
+    
+    for k in tqdm.tqdm(range(runs)):
+        policy_hist = sequential_br(game, iters, 0.99, eta, T, samples, kappa, M, S, N, tau)
+        raw_accuracies.append(get_accuracies(policy_hist, N, S))
+
+        # Compute Nash regret for the final policy
+        final_policy = policy_hist[-1]
+        regret = compute_nash_regret(game, final_policy, 0.99)
+        raw_regrets.append(regret)
+
+    # Convert list of regrets to an array
+    raw_regrets = np.array(raw_regrets)
+    avg_regret = np.mean(raw_regrets)
+    
+    # Output the average Nash regret
+    print("Average Nash regret:", avg_regret)
+    
+    return avg_regret
+
+# Run the experiment
+game = TeamGame(10)
+runs, iters, eta, T, samples, kappa, tau = 5, 40, 0.01, 20, 10, "deterministic", 1
+
+full_experiment_with_regret(game, runs, iters, eta, T, samples, kappa, tau)
+
+# Run the experiment
+game = TeamGame(10)
+runs,iters,eta,T,samples, kappa, tau = 5, 40, 0.01, 20,10,"deterministic",1
+
+full_experiment_with_regret(game, runs, iters, eta, T, samples, kappa, tau)
+    
+      
 # kappa is the parameter in logisitic function.
 # If you want deterministic transition, set kappa="deterministic"
-runs,iters,eta,T,samples, kappa, tau = 20, 40, 0.01, 20,10,"deterministic",1
-game = TeamGame(10)
-full_experiment(game, runs,iters,eta,T,samples, kappa,tau)
+# runs,iters,eta,T,samples, kappa, tau = 20, 40, 0.01, 20,10,"deterministic",1
+# game = TeamGame(10)
+# full_experiment(game, runs,iters,eta,T,samples, kappa,tau)
