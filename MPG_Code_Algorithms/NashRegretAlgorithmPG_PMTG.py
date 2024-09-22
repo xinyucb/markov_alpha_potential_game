@@ -9,6 +9,7 @@ import statistics
 import seaborn as sns; sns.set()
 import itertools
 
+
 class TeamGame:
     #inputs: num players, max facilities per player, list of linear multiplier on utility for num of players
     def __init__(self, n):
@@ -18,6 +19,7 @@ class TeamGame:
         self.num_actions = 2  # Number of actions is the same for all agents
         self.all_states = [0, 1]
         self.S = len(self.all_states)  # Number of states
+        self.act_dic = {0:0, 1:1}
 
     def get_counts(self, actions):
         return np.sum(actions)
@@ -27,41 +29,83 @@ class TeamGame:
         if density < self.n / 2:
             return 0, 0
         else:
-            return 1, r(state)
+            return 1, game.r(state)
 
-def r(s):
-    return s
-
-def xi(i, s, a, n, epsilon):
-    """
-    Free feel to modify this part
-    """
-    xi_val = (s == a) * ((n + 1 - i) / n) * 5 - a * ((i + 1) / n)
-    return xi_val * epsilon
-
-def get_reward(game, actions, state):
-    agents_rewards = game.n * [0]
-    density, public_reward = game.get_public_rewards(actions, state)
-    if density == 0:
+    def r(s):
+        return s
+    
+    def xi(i, s, a, n, epsilon):
+        """
+        Free feel to modify this part
+        """
+        xi_val = (s == a) * ((n + 1 - i) / n) * 5 - a * ((i + 1) / n)
+        return xi_val * epsilon
+    
+    def get_reward(game, actions, state):
+        agents_rewards = game.n * [0]
+        density, public_reward = game.get_public_rewards(actions, state)
+        if density == 0:
+            return agents_rewards
+        
+        for i in range(game.n):
+            agents_rewards[i] = public_reward + game.xi(i, state, actions[i], game.n, game.epsilon)
         return agents_rewards
     
-    for i in range(game.n):
-        agents_rewards[i] = public_reward + xi(i, state, actions[i], game.n, game.epsilon)
-    return agents_rewards
+    """
+    High to High: density >= n/4
+            Low:  density < n/4
+    
+    Low to High: density >= n/2
+           Low:  density < n/2
+    """
+    def sample_next_state(game, state, actions):
+        """Deterministic transition"""
+        density = game.get_counts(actions)
+        if (state == 0 and density >= game.n / 2) or (state == 1 and density >= game.n / 4):
+            return 1
+        return 0
+    
 
-"""
-High to High: density >= n/4
-        Low:  density < n/4
 
-Low to High: density >= n/2
-       Low:  density < n/2
-"""
-def sample_next_state(game, state, actions):
-    """Deterministic transition"""
-    density = game.get_counts(actions)
-    if (state == 0 and density >= game.n / 2) or (state == 1 and density >= game.n / 4):
-        return 1
-    return 0
+def value_function(game, policy, gamma, T,samples, kappa):
+    """
+    O(num_samples * S * T) 
+    get value function by generating trajectories and calculating the rewards
+    Vi(s) = sum_{t<T} gamma^t r(t)
+    """
+    act_dic , N ,  all_states= game.act_dic, game.n, game.all_states
+    selected_profiles = {}
+    value_fun = {(s,i):0 for s in all_states for i in range(N)}  
+    for k in range(samples):
+        for state in all_states: 
+            curr_state = state
+            for t in range(T):
+                actions = [pick_action(policy[curr_state, i]) for i in range(N)]
+                q = tuple(actions+[curr_state])
+                # setdefault(key, value): if key exists in di   c, return its original value in dic. Else, add this new key and value into dic 
+                rewards = selected_profiles.setdefault(q, game.get_reward([act_dic[i] for i in actions], curr_state, kappa))                  
+                for i in range(N):
+                    value_fun[state,i] += (gamma**t)*rewards[i]
+                curr_state = game.sample_next_state(curr_state, actions, kappa)
+    value_fun.update((x,v/samples) for (x,v) in value_fun.items())
+    return value_fun
+
+def Q_function(game, agent, state, action, policy, gamma, value_fun, samples, kappa):
+    """
+    Q = r(s, ai) + gamma * V(s)
+    """
+    act_dic , N = game.act_dic, game.n
+    selected_profiles = {}
+    tot_reward = 0
+    for i in range(samples):
+        actions = [pick_action(policy[state, i]) for i in range(N)]
+        actions[agent] = action
+        q = tuple(actions+[state])
+        rewards = selected_profiles.setdefault(q, game.get_reward([act_dic[i] for i in actions], state, kappa))                  
+        tot_reward += rewards[agent] + gamma*value_fun[game.sample_next_state( state, actions, kappa), agent]
+    return (tot_reward / samples)
+
+
 
 def pick_action(prob_dist):
     acts = [i for i in range(len(prob_dist))]
@@ -76,59 +120,20 @@ def entropy(policy, curr_state, num_player):
                 ent += policy[curr_state, player_index][a] * np.log(policy[curr_state, player_index][a])
     return ent
 
-def value_function(game, policy, gamma, T, samples, tau):
-    """
-    O(num_samples * S * T) 
-    Get value function by generating trajectories and calculating the rewards
-    Vi(s) = sum_{t<T} gamma^t r(t)
-    """
-    S = game.S
-    N = game.n
-    
-    selected_profiles = {}
-    value_fun = {(s, i): 0 for s in range(S) for i in range(N)}
-    for k in range(samples):
-        for state in range(S):
-            curr_state = state
-            for t in range(T):
-                actions = [pick_action(policy[curr_state, i]) for i in range(N)]  # N: num of players
-                q = tuple(actions + [curr_state])
-                rewards = selected_profiles.setdefault(q, get_reward(game, actions, state))                  
-                for i in range(N):
-                    value_fun[state, i] += (gamma**t) * rewards[i] - tau * (gamma**t) * entropy(policy, curr_state, N)
-                curr_state = sample_next_state(game, curr_state, actions)
-    value_fun.update((x, v / samples) for (x, v) in value_fun.items())
-    return value_fun
+def projection_simplex_sort(v, z=1):
+	# Courtesy: EdwardRaff/projection_simplex.py
+    if v.sum() == z and np.alltrue(v >= 0):
+        return v
+    n_features = v.shape[0]
+    u = np.sort(v)[::-1]
+    cssv = np.cumsum(u) - z
+    ind = np.arange(n_features) + 1
+    cond = u - cssv / ind > 0
+    rho = ind[cond][-1]
+    theta = cssv[cond][-1] / float(rho)
+    w = np.maximum(v - theta, 0)
+    return w
 
-def Q_function(game, agent, state, action, policy, gamma, value_fun, samples, tau, actset):
-    """
-    Q = r(s, ai) + gamma * V(s)
-    """
-    selected_profiles = {}
-    N = game.n
-    tot_reward = 0
-    for i in range(samples):
-        actions = [pick_action(policy[state, i]) for i in range(N)]
-        if actset == 1:
-            actions[agent] = action
-        q = tuple(actions + [state])
-        rewards = selected_profiles.setdefault(q, get_reward(game, actions, state))
-        tot_reward += rewards[agent] - tau * entropy(policy, state, N) + gamma * value_fun[sample_next_state(game, state, actions), agent]
-    return tot_reward / samples
-
-def Q_function_one_step_policy(game, agent, state, policy, policy_one_step, gamma, value_fun, samples, tau):
-    """
-    Q = r(s, ai) + gamma * V(s)
-    """
-    selected_profiles = {}
-    N = game.n
-    tot_reward = 0
-    for i in range(samples):
-        actions = [pick_action(policy[state, i]) for i in range(N)]
-        q = tuple(actions + [state])
-        rewards = selected_profiles.setdefault(q, get_reward(game, actions, state))
-        tot_reward += rewards[agent] - tau * entropy(policy, state, N) - tau * entropy(policy_one_step, state, agent) + gamma * value_fun[sample_next_state(game, state, actions), agent]
-    return tot_reward / samples
 
 def policy_accuracy(policy_pi, policy_star, N, S):
     total_dif = N * [0]
@@ -137,56 +142,36 @@ def policy_accuracy(policy_pi, policy_star, N, S):
             total_dif[agent] += np.sum(np.abs((np.array(policy_pi[state, agent]) - np.array(policy_star[state, agent]))))
     return np.sum(total_dif) / N
 
-def sequential_br(game, max_iters, gamma, eta, T, samples, kappa, M, S, N, tau):
-    policy = {(s, i): [1/M] * M for s in range(S) for i in range(N)}
-    policy_exp = {(s, i): [1/M] * M for s in range(S) for i in range(N)}
+def policy_gradient(game, max_iters, gamma, eta, T, samples,kappa):
+    N ,  all_states, S=  game.n, game.all_states, game.S
+    M = 2
+    policy = {(s,i): [1/M]*M for s in all_states for i in range(N)}
     policy_hist = [copy.deepcopy(policy)]
-    
+
     for t in tqdm.tqdm(range(max_iters)):
-        grads_exp = np.zeros((N, S, M))
-        grads_diff = np.zeros((N, S))
-        value_fun = value_function(game, policy, gamma, T, samples, tau)
-
+        eta_ = 1**t * eta
+        b_dist = M * [1]
+            
+        grads = np.zeros((N, S, M))
+        value_fun = value_function(game, policy, gamma, T, samples, kappa)
+	
         for agent in range(N):
-            for st in range(S):
+            for s in range(S):
                 for act in range(M):
-                    grads_exp[agent, st, act] = Q_function(game, agent, st, act, policy, gamma, value_fun, samples, tau, 1)
-        
-        for agent in range(N):
-            for st in range(S):
-                sum_s_agent = 0
-                max_val = np.max(grads_exp[agent, st])
-                for a in range(M):
-                    sum_s_agent += np.exp((grads_exp[agent, st, a] - max_val) / tau)
-                for a in range(M):
-                    policy_exp[st, agent][a] = np.exp((grads_exp[agent, st, a] - max_val) / tau) / sum_s_agent
+                    st = all_states[s]
+                    grads[agent, s, act] =  Q_function(game, agent, st, act, policy, gamma, value_fun, samples, kappa)
 
         for agent in range(N):
-            for st in range(S):
-                fac1 = Q_function_one_step_policy(game, agent, st, policy, policy_exp, gamma, value_fun, samples, tau)
-                fac2 = Q_function_one_step_policy(game, agent, st, policy, policy, gamma, value_fun, samples, tau)
-                grads_diff[agent, st] = fac1 - fac2
-
-        max_index = np.where(grads_diff == np.max(grads_diff))
-        agent_max = max_index[0][0]
-        s_max = max_index[1][0]
-        
-        for agent in range(N):
-            for st in range(S):
-                if agent == agent_max and st == s_max and grads_diff[agent, st] >= 0:
-                    max_val = np.max(grads_exp[agent, st])
-                    sum_s_agent = 0
-                    for a in range(M):
-                        sum_s_agent += np.exp((grads_exp[agent, st, a] - max_val) / tau)
-                    for a in range(M):
-                        policy[st, agent][a] = np.exp((grads_exp[agent, st, a] - max_val) / tau) / sum_s_agent
-
+            for s in range(S):
+                st = all_states[s]
+                policy[st, agent] = projection_simplex_sort(np.add(policy[st, agent], eta_ * grads[agent,s]), z=1)
         policy_hist.append(copy.deepcopy(policy))
 
-        if policy_accuracy(policy_hist[t], policy_hist[t-1], N, S) < 10e-16:
+        if policy_accuracy(game, policy_hist[t], policy_hist[t-1]) < 10e-16:
             return policy_hist
 
     return policy_hist
+
 
 def get_accuracies(policy_hist, N, S):
     fin = policy_hist[-1]
@@ -381,7 +366,7 @@ def full_experiment_with_regret(game, runs, iters, eta, T, samples, kappa, tau, 
     
     
     for k in tqdm.tqdm(range(runs)):
-        policy_hist = sequential_br(game, iters, gamma, eta, T, samples, kappa, M, S, N, tau)
+        policy_hist = policy_gradient(game, iters, gamma, eta, T, samples, kappa)
         raw_accuracies.append(get_accuracies(policy_hist, N, S))
 
         # Debugging: Check the structure of the final policy
