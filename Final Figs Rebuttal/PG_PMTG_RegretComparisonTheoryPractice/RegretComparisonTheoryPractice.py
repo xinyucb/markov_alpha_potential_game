@@ -6,7 +6,10 @@ from TG_ver import teamgame
 from SeqBR import full_experiment_BR
 from PolicyGradient import full_experiment_PG
 from helpers import plot_accuracies
-
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np 
 '''
 N: num of agents
 runs: num of experiments
@@ -51,3 +54,41 @@ for i in range(len(gamma_vals)):
             print('Gamma', gamma_vals[i], 'Run_num', n_avg, 'and the regret is', regret)
             rret[gamma_vals[i]][eps_vals[j]].append(regret)
 # plot_accuracies(accu_team_BR , "BR", accu_team_PG, "PG", N, runs, path = "team_")
+
+
+######### Generating Plot
+
+new_series = {i: [1/((1-i)**(9/4)) for _ in range(10)] for i in gamma_vals}
+
+# Extracting the original rret data and reshaping it into a DataFrame
+data = []
+for gamma in rret:
+    for eps in rret[gamma]:
+        for value in rret[gamma][eps]:
+            data.append({'gamma': gamma, 'eps': eps, 'value': value})
+
+# Convert to DataFrame
+df = pd.DataFrame(data)
+
+# Plot the first set of data using seaborn's lineplot with shading for standard deviation
+plt.figure(figsize=(8, 6), facecolor='white')
+sns.set_style("white")  # Set seaborn style to white
+sns.lineplot(x='gamma', y='value', hue='eps', data=df, ci='sd', palette='bright', marker='o')
+
+# Plot the new series separately (mean and std dev)
+means = [np.mean(new_series[gamma]) for gamma in gamma_vals]
+std_devs = [np.std(new_series[gamma]) for gamma in gamma_vals]
+
+# Plot the new series on the same plot with error bars for std deviation
+plt.errorbar(gamma_vals, means, yerr=std_devs, fmt='-s', color='r', capsize=5)
+
+# Customizing the plot
+plt.xlabel('Gamma Values')
+plt.ylabel('Nash Regret')
+plt.yscale('log')
+plt.title('Comparison of Nash regret from theory and in practice')
+plt.grid(True)
+
+
+# Show the plot
+plt.show()
